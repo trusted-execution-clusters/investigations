@@ -21,6 +21,8 @@ image := if os == "scos" { scos_img } else { fcos_img }
 os_name := if os == "scos" { scos_os } else { fcos_os }
 label := if os == "scos" { scos_label } else { fcos_label }
 archive := os + ".ociarchive"
+platform := "qemu"
+
 
 config := if os == "scos" { scos_config } else { fcos_config }
 full_name := if os == "scos" { "centos-stream-coreos" } else { "fedora-coreos" }
@@ -80,3 +82,8 @@ azure:
     {{cosa_function}}
     cd cache
     cosa osbuild azure
+gcp:
+    #!/usr/bin/env bash
+    {{cosa_function}}
+    cd cache
+    cosa osbuild gcp
