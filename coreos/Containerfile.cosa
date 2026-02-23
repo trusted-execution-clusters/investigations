@@ -1,0 +1,4 @@
+FROM quay.io/coreos-assembler/coreos-assembler:latest
+USER root
+RUN yq -i '(.pipelines[].stages[] | select(.type == "org.osbuild.mkfs.ext4")).options.orphan_file = false' \
+    /usr/lib/coreos-assembler/osbuild-manifests/coreos.osbuild.x86_64.mpp.yaml
