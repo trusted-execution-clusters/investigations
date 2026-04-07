@@ -21,7 +21,8 @@ create_remote_ign_config ()
 }
 
 force=false
-while getopts "k:b:n:fi:m:" opt; do
+secure_boot=""
+while getopts "k:b:n:fi:m:s:" opt; do
   case $opt in
 	k) key=$OPTARG ;;
 	b) butane=$OPTARG ;;
@@ -29,6 +30,7 @@ while getopts "k:b:n:fi:m:" opt; do
 	n) VM_NAME=$OPTARG ;;
 	i) image=$OPTARG ;;
 	m) RAM_MB=$OPTARG ;;
+	s) secure_boot=$OPTARG ;;
 	\?) echo "Invalid option"; exit 1 ;;
   esac
 done
@@ -105,32 +107,35 @@ fi
 
 args=()
 
-# Setup custom Secure Boot vars only if the file exists
-if [[ -f "${OVMF_VARS_DEFAULT}" ]]; then
-	cp "${OVMF_VARS_DEFAULT}" "${OVMF_VARS}"
+if [[ "$secure_boot" == "true" ]]; then
+	# Setup custom Secure Boot vars only if the file exists
+	if [[ -f "${OVMF_VARS_DEFAULT}" ]]; then
+		cp "${OVMF_VARS_DEFAULT}" "${OVMF_VARS}"
 
-	loader="loader=${OVMF_CODE},loader.readonly=yes,loader.type=pflash,loader_secure=yes"
-	nvram="nvram=${OVMF_VARS},nvram.template=${OVMF_VARS_TEMPLATE}"
-	features="firmware.feature0.name=secure-boot,firmware.feature0.enabled=yes,firmware.feature1.name=enrolled-keys,firmware.feature1.enabled=yes"
+		loader="loader=${OVMF_CODE},loader.readonly=yes,loader.type=pflash,loader_secure=yes"
+		nvram="nvram=${OVMF_VARS},nvram.template=${OVMF_VARS_TEMPLATE}"
+		features="firmware.feature0.name=secure-boot,firmware.feature0.enabled=yes,firmware.feature1.name=enrolled-keys,firmware.feature1.enabled=yes"
 
-	args+=("--boot")
-	args+=("uefi,${loader},${nvram},${features}")
+		args+=("--boot")
+		args+=("uefi,${loader},${nvram},${features}")
 
-	args+=("--tpm")
-	args+=("backend.type=emulator,backend.version=2.0,model=tpm-tis")
+		# Automatically connect to the console for this case
+		args+=('--autoconsole')
+		args+=('text')
+	else
+		args+=("--boot")
+		args+=("uefi,loader=${OVMF_CODE},loader.readonly=yes,loader.type=pflash,nvram.template=${OVMF_VARS_TEMPLATE}")
 
-	# Automatically connect to the console for this case
-	args+=('--autoconsole')
-	args+=('text')
+		args+=('--noautoconsole')
+	fi
 else
 	args+=("--boot")
-	args+=("uefi,loader=${OVMF_CODE},loader.readonly=yes,loader.type=pflash,nvram.template=${OVMF_VARS_TEMPLATE}")
-
-	args+=("--tpm")
-	args+=("backend.type=emulator,backend.version=2.0,model=tpm-tis")
-
+   args+=("uefi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=no")
 	args+=('--noautoconsole')
 fi
+
+args+=("--tpm")
+args+=("backend.type=emulator,backend.version=2.0,model=tpm-tis")
 
 virt-install "${URL}" \
 	--name="${VM_NAME}" \
