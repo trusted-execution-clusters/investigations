@@ -3,7 +3,7 @@ name: "Build and push Ignition container image"
 env:
   NAME: "ignition"
   REGISTRY: "quay.io/trusted-execution-clusters"
-  COMMIT: "5a45ee84"
+  COMMIT: "af7bcce09"
 
 on:
   push:
