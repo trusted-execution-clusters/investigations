@@ -1,4 +1,5 @@
 os := "fcos"
+pull_secret := ""
 
 # Tag: quay.io/trusted-execution-clusters/fedora-coreos:42.20251012.2.0
 fcos_base_img:="quay.io/trusted-execution-clusters/fedora-coreos@sha256:6997f51fd27d1be1b5fc2e6cc3ebf16c17eb94d819b5d44ea8d6cf5f826ee773"
@@ -27,9 +28,24 @@ archive := os + ".ociarchive"
 full_name := os_name
 label := os_name
 
-kbc_image := "quay.io/trusted-execution-clusters/trustee-attester:fedora-b13fd8a"
-clevis_pin_trustee_image := "quay.io/trusted-execution-clusters/clevis-pin-trustee:fedora-75015a5"
-ignition_image := "quay.io/trusted-execution-clusters/ignition:fedora-5a45ee84"
+# This image is only for the Azure builds not for QEMU or KubeVirt
+# Set this as default because we target Azure until the bug in trustee is solved:
+# https://github.com/confidential-containers/guest-components/issues/1277
+kbc_image := if os == "fcos" {
+	"quay.io/trusted-execution-clusters/trustee-attester:fedora-without-tpm-v0.17.0"
+} else {
+   "quay.io/trusted-execution-clusters/trustee-attester:centos-stream-without-tpm-v0.17.0"
+}
+clevis_pin_trustee_image := if os == "fcos" {
+   "quay.io/trusted-execution-clusters/clevis-pin-trustee:fedora-75015a5"
+} else {
+    "quay.io/trusted-execution-clusters/clevis-pin-trustee:centos-stream-75015a5"
+}
+ignition_image := if os == "fcos" {
+	"quay.io/trusted-execution-clusters/ignition:fedora-5a45ee84"
+} else {
+	"quay.io/trusted-execution-clusters/ignition:centos-stream-5a45ee84"
+}
 
 info:
     @echo "os {{os}}"
@@ -44,6 +60,7 @@ info:
 
 build:
     sudo podman build --no-cache \
+           {{ if pull_secret != "" { "--authfile " + pull_secret } else { "" } }} \
            --build-arg BASE={{base}} \
            --build-arg COM_COREOS_OSNAME={{label}} \
            --build-arg KBC_IMG={{kbc_image}} \
