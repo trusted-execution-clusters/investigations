@@ -1,0 +1,18 @@
+ARG BASE
+FROM $BASE AS builder
+
+ARG COMMIT=main
+
+RUN yum install -y \
+	git \
+	golang \
+	&& yum clean all
+
+RUN git clone https://github.com/trusted-execution-clusters/butane.git \
+	&& cd butane \
+	&& git checkout ${COMMIT} \
+	&& ./build
+
+FROM scratch
+
+COPY --from=builder /butane/bin/amd64/butane /usr/bin/butane
