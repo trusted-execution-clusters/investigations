@@ -1,0 +1,76 @@
+name: "Build and push Butane container image"
+
+env:
+  NAME: "butane"
+  REGISTRY: "quay.io/trusted-execution-clusters"
+  COMMIT: "77395a69fa0c3c26ff3f8b3f8b37a0d2289e4a00"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "containerfiles/butane.container"
+      - ".github/workflows/build-butane-image.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "containerfiles/butane.container"
+      - ".github/workflows/build-butane-image.yml"
+  schedule:
+    - cron: "0 0 * * MON"
+  workflow_dispatch:
+
+permissions: read-all
+
+# Prevent multiple workflow runs from racing to ensure that pushes are made
+# sequentially for the main branch. Also cancel in progress workflow runs for
+# pull requests only.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-butane-image:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - tag: fedora
+            base: fedora:rawhide
+          - tag: centos-stream
+            base: quay.io/centos/centos:stream9
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate image tag
+        id: generate-tag
+        run: |
+          TAG="${{ matrix.tag }}-${{ env.COMMIT }}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Build butane image (${{ matrix.tag }})
+        id: build-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ env.NAME }}
+          tags: ${{ steps.generate-tag.outputs.tag }}
+          containerfiles: |
+            containerfiles/butane.container
+          context: containerfiles
+          oci: true
+          build-args: |
+            BASE=${{ matrix.base }}
+            COMMIT=${{ env.COMMIT }}
+
+      - name: Push butane image (${{ matrix.tag }}) to registry
+        uses: redhat-actions/push-to-registry@v2
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' && github.repository_owner == 'trusted-execution-clusters'
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.generate-tag.outputs.tag }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
