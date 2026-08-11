@@ -3,6 +3,8 @@
 set -euo pipefail
 # set -x
 
+
+BUTANE_IMG=quay.io/trusted-execution-clusters/butane:fedora-77395a69fa0c3c26ff3f8b3f8b37a0d2289e4a00
 create_remote_ign_config ()
 {
 	IP=$1
@@ -13,9 +15,10 @@ create_remote_ign_config ()
 	sed "s/<IP>/$IP/" configs/remote-ign/${BUTANE} > tmp/${BUTANE}
 
 	podman run --interactive --rm --security-opt label=disable \
+		--entrypoint /usr/bin/butane \
 		--volume "$(pwd)/tmp:/pwd" \
 		--workdir /pwd \
-		quay.io/trusted-execution-clusters/butane:clevis-pin-trustee \
+		$BUTANE_IMG \
 		--pretty --strict /pwd/$BUTANE --output "/pwd/$IGNITION"
 	echo "$IGNITION"
 }
@@ -89,10 +92,11 @@ if [[ -d ${butane%.bu} ]]; then
 	butane_args=("--files-dir" "${butane%.bu}")
 fi
 podman run --interactive --rm --security-opt label=disable \
+	--entrypoint /usr/bin/butane \
 	--volume "$(pwd)":/pwd \
 	--volume "${bufile}":/config.bu:z \
 	--workdir /pwd \
-	quay.io/trusted-execution-clusters/butane:attestation \
+	$BUTANE_IMG \
 	--pretty --strict /config.bu --output "/pwd/${IGNITION_FILE}" \
 	"${butane_args[@]}"
 
