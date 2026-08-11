@@ -12,16 +12,16 @@ on:
     branches:
       - main
     paths:
-      - 'containerfiles/ignition.container'
-      - '.github/workflows/build-ignition-image.yml'
+      - "containerfiles/ignition.container"
+      - ".github/workflows/build-ignition-image.yml"
   pull_request:
     branches:
       - main
     paths:
-      - 'containerfiles/ignition.container'
-      - '.github/workflows/build-ignition-image.yml'
+      - "containerfiles/ignition.container"
+      - ".github/workflows/build-ignition-image.yml"
   schedule:
-    - cron:  '0 0 * * MON'
+    - cron: "0 0 * * MON"
   workflow_dispatch:
 
 permissions: read-all
