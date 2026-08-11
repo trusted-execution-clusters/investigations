@@ -3,7 +3,9 @@ name: "Build and push Ignition container image"
 env:
   NAME: "ignition"
   REGISTRY: "quay.io/trusted-execution-clusters"
-  COMMIT: "af7bcce09"
+  # This branch includes the update to 3.6 plus the change for the attestation key registration.
+  # The changes are in the ignition-3.6 branch
+  COMMIT: "21b6130"
 
 on:
   push:
