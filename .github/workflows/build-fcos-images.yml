@@ -1,0 +1,74 @@
+name: "Build and push fedora-coreos images"
+
+env:
+  REGISTRY: "quay.io/trusted-execution-clusters"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'coreos/**'
+      - '.github/workflows/build-fcos-images.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'coreos/**'
+      - '.github/workflows/build-fcos-images.yml'
+  schedule:
+    - cron: '0 0 * * MON'
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-fcos-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install just
+        run: curl -sSf https://just.systems/install.sh | sudo bash -s -- --to /usr/local/bin
+
+      - name: Build custom FCOS container image
+        working-directory: coreos
+        run: sudo just build
+
+      - name: Push FCOS container image
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+        working-directory: coreos
+        run: |
+          sudo podman login -u ${{ secrets.REGISTRY_USERNAME }} -p ${{ secrets.REGISTRY_PASSWORD }} ${{ env.REGISTRY }}
+          sudo podman push quay.io/trusted-execution-clusters/fcos docker://${{ env.REGISTRY }}/fedora-coreos:latest
+
+      - name: Create OCI archive
+        working-directory: coreos
+        run: sudo just oci-archive
+
+      - name: Initialize cosa workspace and import image
+        working-directory: coreos
+        run: sudo just init
+
+      - name: Build kubevirt disk image
+        working-directory: coreos
+        run: sudo just kubevirt
+
+      - name: Push kubevirt image to registry
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+        working-directory: coreos
+        run: |
+          KUBEVIRT_IMG=$(sudo find cache/builds/latest -name "*.kubevirt.*.ociarchive" | head -1)
+          if [ -z "${KUBEVIRT_IMG}" ]; then
+            echo "No kubevirt image found"
+            sudo find cache/builds/ -type f || true
+            exit 1
+          fi
+          echo "Found: ${KUBEVIRT_IMG}"
+          DATE_TAG=$(date +%Y%m%d)
+          sudo skopeo copy oci-archive:${KUBEVIRT_IMG} docker://${{ env.REGISTRY }}/fedora-coreos-kubevirt:${DATE_TAG} --dest-creds ${{ secrets.REGISTRY_USERNAME }}:${{ secrets.REGISTRY_PASSWORD }}
