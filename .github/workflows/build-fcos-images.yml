@@ -19,6 +19,12 @@ on:
   schedule:
     - cron: '0 0 * * MON'
   workflow_dispatch:
+    inputs:
+      push_image:
+        description: 'Push container images to registry'
+        required: false
+        default: false
+        type: boolean
 
 permissions: read-all
 
@@ -41,7 +47,7 @@ jobs:
         run: sudo just build
 
       - name: Push FCOS container image
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || inputs.push_image))
         working-directory: coreos
         run: |
           sudo podman login -u ${{ secrets.REGISTRY_USERNAME }} -p ${{ secrets.REGISTRY_PASSWORD }} ${{ env.REGISTRY }}
@@ -60,7 +66,7 @@ jobs:
         run: sudo just kubevirt
 
       - name: Push kubevirt image to registry
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || inputs.push_image))
         working-directory: coreos
         run: |
           KUBEVIRT_IMG=$(sudo find cache/builds/latest -name "*.kubevirt.*.ociarchive" | head -1)
