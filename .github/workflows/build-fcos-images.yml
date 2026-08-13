@@ -8,20 +8,20 @@ on:
     branches:
       - main
     paths:
-      - 'coreos/**'
-      - '.github/workflows/build-fcos-images.yml'
+      - "coreos/**"
+      - ".github/workflows/build-fcos-images.yml"
   pull_request:
     branches:
       - main
     paths:
-      - 'coreos/**'
-      - '.github/workflows/build-fcos-images.yml'
+      - "coreos/**"
+      - ".github/workflows/build-fcos-images.yml"
   schedule:
-    - cron: '0 0 * * MON'
+    - cron: "0 0 * * MON"
   workflow_dispatch:
     inputs:
       push_image:
-        description: 'Push container images to registry'
+        description: "Push container images to registry"
         required: false
         default: false
         type: boolean
