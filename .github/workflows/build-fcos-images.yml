@@ -69,7 +69,7 @@ jobs:
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || inputs.push_image))
         working-directory: coreos
         run: |
-          KUBEVIRT_IMG=$(sudo find cache/builds/latest -name "*.kubevirt.*.ociarchive" | head -1)
+          KUBEVIRT_IMG=$(sudo find cache/builds/latest/x86_64 -name "*-kubevirt.*.ociarchive" | head -1)
           if [ -z "${KUBEVIRT_IMG}" ]; then
             echo "No kubevirt image found"
             sudo find cache/builds/ -type f || true
