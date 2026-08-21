@@ -1,97 +1,138 @@
+# Build TEC CoreOS images (fcos / scos / rhcos)
+# Usage:
+#   just build                        # build FCOS container image
+#   just os=scos build                # build SCOS container image
+#   just os=rhcos build               # build RHCOS (needs REGISTRY_AUTH_FILE)
+#   just build-qemu                   # build QEMU disk image (needs KVM)
+#   KBC_IMG=<img> just build          # override component image for testing
+#   OS_VERSION=9.8 just os=rhcos build
+
+
 os := "fcos"
 
-# Tag: quay.io/trusted-execution-clusters/fedora-coreos:42.20251012.2.0
-fcos_base_img:="quay.io/trusted-execution-clusters/fedora-coreos@sha256:6997f51fd27d1be1b5fc2e6cc3ebf16c17eb94d819b5d44ea8d6cf5f826ee773"
-# Tag: quay.io/okd/scos-content:4.22.0-okd-scos.3-stream-coreos
-scos_base_img:= "quay.io/okd/scos-content@sha256:f4b90ebda72d56ad89e4b33099c12f0f94321366ccf615b97fb7158f684e6fea"
-rhcos_base_img:= "quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:905508f17491d092ce5c81283cac740bb7616d2dcf1947c883849a3a76cf9c4f"
+# Upstream configs (provides osbuild support, platforms.yaml, BUILDER_IMG)
+fcos_base_config := "https://github.com/coreos/fedora-coreos-config"                                                                                                                                       
+scos_base_config := "https://github.com/coreos/rhel-coreos-config.git"
+rhcos_base_config := scos_base_config
 
-fcos_img:= "quay.io/trusted-execution-clusters/fcos"
-scos_img:= "quay.io/trusted-execution-clusters/scos"
-rhcos_img:= "quay.io/trusted-execution-clusters/rhcos"
+# TEC overlay configs (Containerfile, build-args, versionary, usr/)
+fcos_tec_config := "https://github.com/trusted-execution-clusters/fedora-coreos-tec-config"
+rhcos_tec_config := "https://github.com/trusted-execution-clusters/rhel-coreos-tec-config"
+scos_tec_config := rhcos_tec_config
 
-fcos_name:= "fedora-coreos"
-scos_name:= "centos-stream-coreos"
-rhcos_name:= "redhat-coreos"
+# Base images — empty means use TEC config's build-args.conf default
+# SCOS needs explicit override: shares rhcos TEC config which has RHCOS base (requires auth)
+fcos_base_img  := env("FCOS_BASE_IMG", "")
+scos_base_img  := env("SCOS_BASE_IMG", "quay.io/okd/scos-content@sha256:f4b90ebda72d56ad89e4b33099c12f0f94321366ccf615b97fb7158f684e6fea")
+rhcos_base_img := env("RHCOS_BASE_IMG", "")
 
-fcos_config:= "https://github.com/coreos/fedora-coreos-config"
-scos_config:= "https://github.com/coreos/rhel-coreos-config.git"
-rhcos_config:= scos_config
+base_img := if os == "rhcos" { rhcos_base_img } else { if os == "scos" { scos_base_img } else { fcos_base_img } }
 
-base := if os == "rhcos" { rhcos_base_img } else { if os == "scos" { scos_base_img } else { fcos_base_img }}
-image:= if os == "rhcos" { rhcos_img } else { if os == "scos" { scos_img } else { fcos_img} }
-os_name := if os == "rhcos" { rhcos_name } else { if os == "scos" { scos_name } else { fcos_name } }
-config := if os == "rhcos" { rhcos_config } else { if os == "scos" { scos_config } else { fcos_config } }
+base_config := if os == "rhcos" { rhcos_base_config } else { if os == "scos" { scos_base_config } else { fcos_base_config } }                                                                              
+tec_config := if os == "rhcos" { rhcos_tec_config } else { if os == "scos" { scos_tec_config } else { fcos_tec_config } }
 
-archive := os + ".ociarchive"
-
-full_name := os_name
-label := os_name
-
-kbc_image := "quay.io/trusted-execution-clusters/trustee-attester:fedora-b13fd8a"
-clevis_pin_trustee_image := "quay.io/trusted-execution-clusters/clevis-pin-trustee:fedora-4dcc7df"
-ignition_image := "quay.io/trusted-execution-clusters/ignition:fedora-af7bcce09"
-
-info:
-    @echo "os {{os}}"
-    @echo "base {{base}}"
-    @echo "image {{image}}"
-    @echo "os_name {{os_name}}"
-    @echo "label {{label}}"
-    @echo "kbc_image {{kbc_image}}"
-    @echo "clevis_pin_trustee_image {{clevis_pin_trustee_image}}"
-    @echo "config {{config}}"
+kbc_image := env("KBC_IMG", "")
+clevis_pin_trustee_image := env("CLEVIS_PIN_IMG", "")
+ignition_image := env("IGNITION_IMG", "")
+os_version := env("OS_VERSION", "")
 
 
-build:
-    podman build --no-cache \
-           --build-arg BASE={{base}} \
-           --build-arg COM_COREOS_OSNAME={{label}} \
-           --build-arg KBC_IMG={{kbc_image}} \
-           --build-arg CLEVIS_PIN_IMG={{clevis_pin_trustee_image}} \
-           --build-arg IGNITION_IMG={{ignition_image}} \
-           -t {{image}} -f Containerfile .
-
-
-oci-archive:
-    skopeo copy containers-storage:{{image}} oci-archive:{{archive}}
-
-# Reusable cosa function definition
+# cosa function
 cosa_function := '''
     #!/usr/bin/env bash
     cosa() {
         env | grep COREOS_ASSEMBLER || true
-
-        # Default container image
-        COREOS_ASSEMBLER_CONTAINER_LATEST="quay.io/coreos-assembler/coreos-assembler:latest"
-        sudo podman pull $COREOS_ASSEMBLER_CONTAINER_LATEST
-
-        set -ex
-        sudo podman run --rm -ti --security-opt=label=disable --privileged -u 0 \
-				--network host \
+        local -r COREOS_ASSEMBLER_CONTAINER_LATEST="quay.io/coreos-assembler/coreos-assembler:latest"
+        if [[ -z ${COREOS_ASSEMBLER_CONTAINER} ]] && $(podman image exists ${COREOS_ASSEMBLER_CONTAINER_LATEST}); then
+            local -r cosa_build_date_str="$(podman inspect -f "{{.Created}}" ${COREOS_ASSEMBLER_CONTAINER_LATEST} | awk '{print $1}')"
+            local -r cosa_build_date="$(date -d ${cosa_build_date_str} +%s)"
+            if [[ $(date +%s) -ge $((cosa_build_date + 60*60*24*7)) ]] ; then
+                echo -e "\e[0;33m----" >&2
+                echo "The COSA container image is more than a week old and likely outdated." >&2
+                echo "You should pull the latest version with:" >&2
+                echo "podman pull ${COREOS_ASSEMBLER_CONTAINER_LATEST}" >&2
+                echo -e "----\e[0m" >&2
+                sleep 10
+            fi
+        fi
+        set -x
+        podman run --rm -ti --security-opt=label=disable --privileged \
+            --userns=keep-id:uid=1000,gid=1000 \
             -v=${PWD}:/srv/ --device=/dev/kvm --device=/dev/fuse \
             --tmpfs=/tmp -v=/var/tmp:/var/tmp --name=cosa \
+            ${REGISTRY_AUTH_FILE:+-v=$REGISTRY_AUTH_FILE:$REGISTRY_AUTH_FILE:ro -e REGISTRY_AUTH_FILE} \
             ${COREOS_ASSEMBLER_CONFIG_GIT:+-v=$COREOS_ASSEMBLER_CONFIG_GIT:/srv/src/config/:ro} \
             ${COREOS_ASSEMBLER_GIT:+-v=$COREOS_ASSEMBLER_GIT/src/:/usr/lib/coreos-assembler/:ro} \
             ${COREOS_ASSEMBLER_ADD_CERTS:+-v=/etc/pki/ca-trust:/etc/pki/ca-trust:ro} \
             ${COREOS_ASSEMBLER_CONTAINER_RUNTIME_ARGS} \
             ${COREOS_ASSEMBLER_CONTAINER:-$COREOS_ASSEMBLER_CONTAINER_LATEST} "$@"
+        rc=$?; set +x; return $rc
     }
 '''
 
-init:
+info:
+    @echo "os {{os}}"
+    @echo "base_config {{base_config}}"
+    @echo "tec_config {{tec_config}}"
+    @echo "kbc_image {{kbc_image}}"
+    @echo "clevis_pin_trustee_image {{clevis_pin_trustee_image}}"
+    @echo "ignition_image {{ignition_image}}"
+    @echo "base_img {{base_img}}"
+    @echo "os_version {{os_version}}" 
+
+
+build:
     #!/usr/bin/env bash
     set -ex
+    podman rm -f cosa 2>/dev/null || true
     {{cosa_function}}
     mkdir -p cache
-    cp {{archive}} cache/{{archive}}
     cd cache
-    cosa init --force {{config}}
-    cosa import oci-archive:/srv/{{archive}}
+    # 1. Init with upstream config (provides osbuild, platforms.yaml, BUILDER_IMG)
+    cosa init --force {{base_config}}
+
+    # 2. Save upstream BUILDER_IMG before overlay
+    BUILDER_IMG=$(grep '^BUILDER_IMG=' src/config/build-args.conf 2>/dev/null || echo "")
+    [ -z "$BUILDER_IMG" ] && echo "WARNING: BUILDER_IMG not found in upstream, osbuild will lack python3" >&2
+
+    # 3. Clone TEC config and overlay (Containerfile, build-args, manifest, versionary, usr/)
+    rm -rf /tmp/tec-overlay
+    git clone --depth=1 --recurse-submodules {{tec_config}} /tmp/tec-overlay
+    cp /tmp/tec-overlay/Containerfile src/config/
+    
+    # 4. build-args: FCOS uses build-args.conf, RHCOS uses build-args-<ver>.conf
+    BUILD_ARGS=$(ls /tmp/tec-overlay/build-args.conf 2>/dev/null || \
+                ls /tmp/tec-overlay/build-args-*.conf 2>/dev/null | head -1)
+    if [ -z "$BUILD_ARGS" ]; then
+        echo "ERROR: no build-args.conf found in TEC config" >&2; exit 1
+    fi
+    cp "$BUILD_ARGS" src/config/build-args.conf
+    [ -n "{{base_img}}" ] && sed -i "s|^BASE=.*|BASE={{base_img}}|" src/config/build-args.conf
+
+    # 5. Override the osversion 
+    [ -n "{{os_version}}" ] && sed -i "s|^VERSION=.*|VERSION={{os_version}}|" src/config/build-args.conf
+
+    cp /tmp/tec-overlay/manifest.yaml src/config/
+    cp /tmp/tec-overlay/versionary src/config/
+    cp -rL /tmp/tec-overlay/usr src/config/
+    rm -rf /tmp/tec-overlay
+    echo "!/usr/" >> src/config/.containerignore
+
+    # 6. Restore upstream BUILDER_IMG (needed for osbuild buildroot with python3)
+    if [ -n "$BUILDER_IMG" ]; then
+        echo "$BUILDER_IMG" >> src/config/build-args.conf
+    fi
+
+    # 7. Apply env overrides if set
+    [ -n "{{kbc_image}}" ] && sed -i "s|^KBC_IMG=.*|KBC_IMG={{kbc_image}}|" src/config/build-args.conf
+    [ -n "{{clevis_pin_trustee_image}}" ] && sed -i "s|^CLEVIS_PIN_IMG=.*|CLEVIS_PIN_IMG={{clevis_pin_trustee_image}}|" src/config/build-args.conf
+    [ -n "{{ignition_image}}" ] && sed -i "s|^IGNITION_IMG=.*|IGNITION_IMG={{ignition_image}}|" src/config/build-args.conf
+    cosa build
 
 build-qemu:
     #!/usr/bin/env bash
     set -ex
+    podman rm -f cosa 2>/dev/null || true
     {{cosa_function}}
     cd cache
     cosa osbuild qemu
@@ -99,6 +140,7 @@ build-qemu:
 kubevirt:
     #!/usr/bin/env bash
     set -ex
+    podman rm -f cosa 2>/dev/null || true
     {{cosa_function}}
     cd cache
     cosa osbuild kubevirt
@@ -106,6 +148,7 @@ kubevirt:
 azure:
     #!/usr/bin/env bash
     set -ex
+    podman rm -f cosa 2>/dev/null || true
     {{cosa_function}}
     cd cache
     cosa osbuild azure
