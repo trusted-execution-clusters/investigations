@@ -28,6 +28,8 @@ archive := os + ".ociarchive"
 full_name := os_name
 label := os_name
 
+cosa_image := "cosa-no-orphan-file"
+
 kbc_image := "quay.io/trusted-execution-clusters/trustee-attester:fedora-b13fd8a"
 clevis_pin_trustee_image := "quay.io/trusted-execution-clusters/clevis-pin-trustee:fedora-4dcc7df"
 ignition_image := "quay.io/trusted-execution-clusters/ignition:fedora-af7bcce09"
@@ -44,6 +46,7 @@ info:
 
 
 build:
+    sudo podman build --no-cache -t {{cosa_image}} -f Containerfile.cosa .
     podman build --no-cache \
            --build-arg BASE={{base}} \
            --build-arg COM_COREOS_OSNAME={{label}} \
@@ -62,10 +65,6 @@ cosa_function := '''
     cosa() {
         env | grep COREOS_ASSEMBLER || true
 
-        # Default container image
-        COREOS_ASSEMBLER_CONTAINER_LATEST="quay.io/coreos-assembler/coreos-assembler:latest"
-        sudo podman pull $COREOS_ASSEMBLER_CONTAINER_LATEST
-
         set -ex
         sudo podman run --rm -ti --security-opt=label=disable --privileged -u 0 \
 				--network host \
@@ -75,7 +74,7 @@ cosa_function := '''
             ${COREOS_ASSEMBLER_GIT:+-v=$COREOS_ASSEMBLER_GIT/src/:/usr/lib/coreos-assembler/:ro} \
             ${COREOS_ASSEMBLER_ADD_CERTS:+-v=/etc/pki/ca-trust:/etc/pki/ca-trust:ro} \
             ${COREOS_ASSEMBLER_CONTAINER_RUNTIME_ARGS} \
-            ${COREOS_ASSEMBLER_CONTAINER:-$COREOS_ASSEMBLER_CONTAINER_LATEST} "$@"
+            ${COREOS_ASSEMBLER_CONTAINER:-''' + cosa_image + '''} "$@"
     }
 '''
 
