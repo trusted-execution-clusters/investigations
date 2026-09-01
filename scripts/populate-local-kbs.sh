@@ -5,9 +5,9 @@ set -ex
 KBC=kbs-client
 URL=http://localhost:8080
 KEY=trustee/keys/private.key
-
+LUKS_KEY=$(openssl rand 24 | base64)
 cat <<EOF >secret
-{ "key_type": "oct", "key": "2b442dd5db4478367729ef8bbf2e7480" }
+{ "key_type": "oct", "key": "${LUKS_KEY}" }
 EOF
 
 $KBC --url $URL  config \

@@ -23,21 +23,39 @@ Currently, ignition does not support encrypting the disk using trustee (see this
 [RFC](https://github.com/coreos/ignition/issues/2099) for more details). Therefore, we need to build a custom initramfs
 which contains the trustee attester, and the KBS information hardcoded in the setup script.
 
-Build the Fedora CoreOS or Centos Stream CoreOS image with the custom initrd:
+Build the Fedora CoreOS, CentOS Stream CoreOS, or Red Hat CoreOS image with the custom initrd:
 ```bash
 cd coreos
-# Fedora CoreOS image (qemu)
-just build oci-archive init build-qemu
-# Fedora CoreOS image for Azure
-just build oci-archive init azure
-# Centos Stream CoreOS image (qemu)
-just os=scos \
-     [kbc_image="$KBC_IMAGE"] \
-     [clevis_pin_trustee_image="$CLEVIS_PIN_IMAGE"] \
-     [ignition_image="$IGNITION_IMAGE"] \
-     build oci-archive init build-qemu
-# Red Hat CoreOS image (qemu) -- like 'scos' but os=rhcos
-  (and possibly different container images)
+
+# Check what will be built before running
+just info
+just os=scos info
+
+# Fedora CoreOS container image + qemu disk image
+just build
+just build-qemu
+
+# Fedora CoreOS for Azure
+just build
+just azure
+
+# CentOS Stream CoreOS (SCOS) — uses public OKD base image, no credentials needed
+just os=scos build
+just os=scos build-qemu
+
+# Red Hat CoreOS (RHCOS) — requires Red Hat pull secret
+export REGISTRY_AUTH_FILE=~/.config/containers/pull-secret.json
+just os=rhcos build
+just os=rhcos build-qemu
+
+# Override component images for testing (via environment variables)
+KBC_IMG=<img> CLEVIS_PIN_IMG=<img> IGNITION_IMG=<img> just os=scos build
+
+# Override OS version (e.g. target RHEL 9.8 instead of TEC config default)
+OS_VERSION=9.8 just os=rhcos build
+
+# Override base image (e.g. pin a specific SCOS nightly)
+SCOS_BASE_IMG=quay.io/okd/scos-content@sha256:<digest> just os=scos build
 ```
 
 ### Create local Trustee deployment
