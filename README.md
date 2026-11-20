@@ -43,7 +43,7 @@ just os=scos build
 just os=scos build-qemu
 
 # Red Hat CoreOS (RHCOS) — requires Red Hat pull secret and RH VPN network
-export REGISTRY_AUTH_FILE=~/.config/containers/<auth.json>; export RHCOS_REPO="yumrepos url"
+export REGISTRY_AUTH_FILE=~/.config/containers/<auth.json>; export COREOS_ASSEMBLER_ADD_CERTS=y; export RHCOS_REPO="yumrepos url"
 just os=rhcos build
 just os=rhcos build-qemu
 
