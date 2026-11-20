@@ -4,16 +4,16 @@ os := "fcos"
 
 # Branch configuration (override with env vars)
 fcos_branch := env_var_or_default("FCOS_TEC_BRANCH", "main")
-rhcos_branch := env_var_or_default("RHCOS_TEC_BRANCH", "main")
+rhcos_branch := env_var_or_default("RHCOS_BRANCH", "main")
 tec_submodule_branch := env_var_or_default("TEC_SUBMODULE_BRANCH", "main")
 
 
 # TEC overlay configs (Containerfile, build-args, versionary, usr/)
 fcos_tec_config := env_var_or_default("FCOS_TEC_CONFIG", "https://github.com/trusted-execution-clusters/fedora-coreos-tec-config")
-rhcos_tec_config := env_var_or_default("RHCOS_TEC_CONFIG", "https://github.com/trusted-execution-clusters/rhel-coreos-tec-config")
-scos_tec_config := rhcos_tec_config
+rhcos_config := env_var_or_default("RHCOS_CONFIG", "https://github.com/coreos/rhel-coreos-config")
+scos_config := rhcos_config
 
-tec_config := if os == "rhcos" { rhcos_tec_config } else { if os == "scos" { scos_tec_config } else { fcos_tec_config } }
+config_repo := if os == "rhcos" { rhcos_config } else { if os == "scos" { scos_config } else { fcos_tec_config } }
 
 # Internal RHCOS yum repos (set RHCOS_REPO env var for internal builds)
 rhcos_repo := env_var_or_default("RHCOS_REPO", "")
@@ -55,19 +55,19 @@ info:
     #!/usr/bin/env bash
     echo "=== Build Configuration ==="
     echo "OS: {{os}}"
-    echo "Config Repo: {{tec_config}}"
+    echo "Config Repo: {{config_repo}}"
     echo ""
     if [ "{{os}}" = "rhcos" ] || [ "{{os}}" = "scos" ]; then
         echo "RHCOS-specific variables:"
-        echo "  RHCOS_TEC_BRANCH: {{rhcos_branch}}"
+        echo "  RHCOS_BRANCH: {{rhcos_branch}}"
         echo "  TEC_SUBMODULE_BRANCH: {{tec_submodule_branch}}"
         echo "  RHCOS_REPO: ${RHCOS_REPO:-not set}"
         echo "  REGISTRY_AUTH_FILE=<location of auth.json>"
         echo ""
         echo "To override:"
-        echo "  TEC_RHCOS_BRANCH=my-branch just os={{os}} build"
+        echo "  RHCOS_BRANCH=my-branch just os={{os}} build"
         echo "  TEC_SUBMODULE_BRANCH=my-submodule-branch just os={{os}} build"
-        echo "  RHCOS_REPO=http://repo-url REGISTRY_AUTH_FILE=<location of auth.json> just os={{os}} build"
+        echo "  RHCOS_REPO=http://repo-url COREOS_ASSEMBLER_ADD_CERTS=y REGISTRY_AUTH_FILE=<location of auth.json> just os={{os}} build"
     else
         echo "FCOS-specific variables:"
         echo "  FCOS_TEC_BRANCH: {{fcos_branch}}"
@@ -94,9 +94,9 @@ build:
         cosa init --force \
             --yumrepos "${RHCOS_REPO}" \
             --branch {{rhcos_branch}} \
-            {{rhcos_tec_config}}
+            {{config_repo}}
     else
-        cosa init --force --branch {{fcos_branch}} {{tec_config}}
+        cosa init --force --branch {{fcos_branch}} {{config_repo}}
     fi
     
     # For testing/Development RHCOS builds: ensure tec-coreos-config submodule is on correct branch
@@ -124,7 +124,7 @@ build:
     #    cp -v overrides/rpm/*.rpm src/config/tec-coreos-config/rpms/ 2>/dev/null || true
     #fi
 
-    cosa build
+    cosa build ostree --skip-prune --file off-layering/cocl/Containerfile
 
 build-qemu:
     #!/usr/bin/env bash
